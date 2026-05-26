@@ -149,6 +149,8 @@ aws-eks/
 ⸻
 ## 3. Improvements
 
+## 4. Others
+
 ### A successful benchmark requires:
 
 - valid 3FS container images;
