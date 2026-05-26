@@ -147,6 +147,7 @@ aws-eks/
 
 ```
 ⸻
+## 3. Improvements
 
 ### A successful benchmark requires:
 
