@@ -52,7 +52,7 @@ FlatWall is not just a chat interface. It is designed as a private-cloud researc
 
 The tested architecture is:
 
-<img width="530" height="416" alt="image" src="https://github.com/user-attachments/assets/8f9db18f-65fd-4cee-9380-69d00d3d4ed8" />
+<img width="530" height="416" alt="Pipeline Architecture" src="./pipeline.png" />
 
 ## 3. Quick Reference
 
