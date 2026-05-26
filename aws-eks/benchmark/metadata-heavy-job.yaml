@@ -1,0 +1,64 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: threefs-metadata-heavy
+  namespace: threefs
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: metadata
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              MOUNT=/mnt/3fs
+              N=${N:-10000}
+              BASE="$MOUNT/meta_bench_$(date +%s)"
+              mkdir -p "$BASE"
+              echo "=== create $N files ==="
+              start=$(date +%s)
+              for i in $(seq 1 "$N"); do
+                echo "$i" > "$BASE/file_$i"
+              done
+              end=$(date +%s)
+              echo "create_seconds=$((end-start))"
+              echo "=== stat $N files ==="
+              start=$(date +%s)
+              for i in $(seq 1 "$N"); do
+                stat "$BASE/file_$i" >/dev/null
+              done
+              end=$(date +%s)
+              echo "stat_seconds=$((end-start))"
+              echo "=== readdir ==="
+              start=$(date +%s)
+              ls "$BASE" >/dev/null
+              end=$(date +%s)
+              echo "readdir_seconds=$((end-start))"
+              echo "=== rename $N files ==="
+              start=$(date +%s)
+              for i in $(seq 1 "$N"); do
+                mv "$BASE/file_$i" "$BASE/renamed_$i"
+              done
+              end=$(date +%s)
+              echo "rename_seconds=$((end-start))"
+              echo "=== delete $N files ==="
+              start=$(date +%s)
+              rm -f "$BASE"/renamed_*
+              end=$(date +%s)
+              echo "delete_seconds=$((end-start))"
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

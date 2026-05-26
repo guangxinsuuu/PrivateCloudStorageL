@@ -1,0 +1,125 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kvcache-read
+  namespace: threefs
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: read
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          env:
+            - name: MOUNT
+              value: /mnt/3fs
+            - name: WORKERS
+              value: "8"
+            - name: RUNTIME_SECONDS
+              value: "120"
+            - name: HOTSET_PERCENT
+              value: "20"
+            - name: HOT_READ_PERCENT
+              value: "80"
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              MOUNT=${MOUNT:-/mnt/3fs}
+              WORKERS=${WORKERS:-8}
+              RUNTIME_SECONDS=${RUNTIME_SECONDS:-120}
+              HOTSET_PERCENT=${HOTSET_PERCENT:-20}
+              HOT_READ_PERCENT=${HOT_READ_PERCENT:-80}
+              BASE="${MOUNT}/kvcache"
+              BLOCK_DIR="${BASE}/blocks"
+              RESULT_DIR="${BASE}/results"
+              mkdir -p "$RESULT_DIR"
+              if [ ! -d "$BLOCK_DIR" ]; then
+                echo "ERROR: block dir missing: $BLOCK_DIR"
+                echo "Run kvcache-prepare-job.yaml first."
+                exit 1
+              fi
+              BLOCK_COUNT=$(find "$BLOCK_DIR" -type f | wc -l)
+              if [ "$BLOCK_COUNT" -le 0 ]; then
+                echo "ERROR: no blocks found in $BLOCK_DIR"
+                exit 1
+              fi
+              HOTSET_COUNT=$((BLOCK_COUNT * HOTSET_PERCENT / 100))
+              if [ "$HOTSET_COUNT" -le 0 ]; then
+                HOTSET_COUNT=1
+              fi
+              echo "benchmark=kvcache_read"
+              echo "mount=${MOUNT}"
+              echo "block_count=${BLOCK_COUNT}"
+              echo "workers=${WORKERS}"
+              echo "runtime_seconds=${RUNTIME_SECONDS}"
+              echo "hotset_percent=${HOTSET_PERCENT}"
+              echo "hot_read_percent=${HOT_READ_PERCENT}"
+              echo "hotset_count=${HOTSET_COUNT}"
+              start=$(date +%s)
+              end_time=$((start + RUNTIME_SECONDS))
+              worker_fn() {
+                local wid="$1"
+                local ops=0
+                local bytes=0
+                while [ "$(date +%s)" -lt "$end_time" ]; do
+                  r=$((RANDOM % 100))
+                  if [ "$r" -lt "$HOT_READ_PERCENT" ]; then
+                    idx=$((RANDOM % HOTSET_COUNT))
+                  else
+                    idx=$((RANDOM % BLOCK_COUNT))
+                  fi
+                  file=$(printf "%s/block_%08d.bin" "$BLOCK_DIR" "$idx")
+                  if [ -f "$file" ]; then
+                    size=$(stat -c%s "$file" 2>/dev/null || stat -f%z "$file")
+                    cat "$file" > /dev/null
+                    ops=$((ops + 1))
+                    bytes=$((bytes + size))
+                  fi
+                done
+                echo "worker=${wid} ops=${ops} bytes=${bytes}" > "${RESULT_DIR}/read_worker_${wid}.txt"
+              }
+              w=0
+              while [ "$w" -lt "$WORKERS" ]; do
+                worker_fn "$w" &
+                w=$((w+1))
+              done
+              wait
+              finish=$(date +%s)
+              seconds=$((finish-start))
+              if [ "$seconds" -eq 0 ]; then
+                seconds=1
+              fi
+              total_ops=0
+              total_bytes=0
+              for f in "$RESULT_DIR"/read_worker_*.txt; do
+                [ -f "$f" ] || continue
+                ops=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^ops=/){split($i,a,"="); print a[2]}}' "$f")
+                bytes=$(awk '{for(i=1;i<=NF;i++) if($i ~ /^bytes=/){split($i,a,"="); print a[2]}}' "$f")
+                total_ops=$((total_ops + ops))
+                total_bytes=$((total_bytes + bytes))
+              done
+              mib=$((total_bytes / 1024 / 1024))
+              mib_s=$((mib / seconds))
+              ops_s=$((total_ops / seconds))
+              echo "read_seconds=${seconds}"
+              echo "read_ops=${total_ops}"
+              echo "read_bytes=${total_bytes}"
+              echo "read_mib=${mib}"
+              echo "read_mib_s=${mib_s}"
+              echo "read_ops_s=${ops_s}"
+              echo "status=complete"
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

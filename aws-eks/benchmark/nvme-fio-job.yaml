@@ -1,0 +1,72 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: nvme-fio
+  namespace: default
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: storage
+      tolerations:
+        - key: role
+          operator: Equal
+          value: storage
+          effect: NoSchedule
+      containers:
+        - name: fio
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              dnf install -y fio
+              mkdir -p /results
+              echo "=== df ==="
+              df -h
+              echo "=== NVMe seq read ==="
+              fio --name=nvme-seq-read \
+                --filename=/mnt/data0/testfile \
+                --rw=read \
+                --bs=1M \
+                --iodepth=64 \
+                --numjobs=8 \
+                --size=20G \
+                --direct=1 \
+                --runtime=120 \
+                --time_based \
+                --group_reporting \
+                --output-format=json \
+                --output=/results/nvme-seq-read.json
+              echo "=== NVMe seq write ==="
+              fio --name=nvme-seq-write \
+                --filename=/mnt/data0/testfile \
+                --rw=write \
+                --bs=1M \
+                --iodepth=64 \
+                --numjobs=8 \
+                --size=20G \
+                --direct=1 \
+                --runtime=120 \
+                --time_based \
+                --group_reporting \
+                --output-format=json \
+                --output=/results/nvme-seq-write.json
+              cat /results/nvme-seq-read.json
+              cat /results/nvme-seq-write.json
+          volumeMounts:
+            - name: data0
+              mountPath: /mnt/data0
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: data0
+          hostPath:
+            path: /mnt/data0
+            type: Directory
+        - name: results
+          emptyDir: {}

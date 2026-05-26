@@ -1,0 +1,63 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: threefs-fuse-fio
+  namespace: threefs
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: fio
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              dnf install -y fio
+              mkdir -p /results
+              echo "=== FUSE mount check ==="
+              mount | grep 3fs || true
+              df -h /mnt/3fs || true
+              echo "=== 3FS FUSE write ==="
+              fio --name=3fs-fuse-write \
+                --directory=/mnt/3fs \
+                --rw=write \
+                --bs=1M \
+                --iodepth=32 \
+                --numjobs=4 \
+                --size=20G \
+                --direct=1 \
+                --runtime=120 \
+                --time_based \
+                --group_reporting \
+                --output-format=json \
+                --output=/results/fuse-write.json || true
+              echo "=== 3FS FUSE read ==="
+              fio --name=3fs-fuse-read \
+                --directory=/mnt/3fs \
+                --rw=read \
+                --bs=1M \
+                --iodepth=32 \
+                --numjobs=4 \
+                --size=20G \
+                --direct=1 \
+                --runtime=120 \
+                --time_based \
+                --group_reporting \
+                --output-format=json \
+                --output=/results/fuse-read.json || true
+              cat /results/*.json || true
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

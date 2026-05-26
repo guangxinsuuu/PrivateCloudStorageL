@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: efa-libfabric-test
+  namespace: default
+spec:
+  restartPolicy: Never
+  nodeSelector:
+    role: client
+  containers:
+    - name: efa
+      image: public.ecr.aws/amazonlinux/amazonlinux:2023
+      securityContext:
+        privileged: true
+      resources:
+        requests:
+          vpc.amazonaws.com/efa: "1"
+        limits:
+          vpc.amazonaws.com/efa: "1"
+      command:
+        - /bin/bash
+        - -lc
+        - |
+          set -euo pipefail
+          dnf install -y libfabric libfabric-devel rdma-core || true
+          echo "=== fi_info -p efa ==="
+          fi_info -p efa || true
+          echo "=== fi_info all providers ==="
+          fi_info | head -200 || true
+          echo "=== ibv_devinfo ==="
+          ibv_devinfo || true
+          sleep 3600

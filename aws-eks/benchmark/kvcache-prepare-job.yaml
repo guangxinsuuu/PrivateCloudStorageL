@@ -1,0 +1,68 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kvcache-prepare
+  namespace: threefs
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: prepare
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          env:
+            - name: MOUNT
+              value: /mnt/3fs
+            - name: BLOCK_COUNT
+              value: "10000"
+            - name: BLOCK_KB
+              value: "256"
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              MOUNT=${MOUNT:-/mnt/3fs}
+              BLOCK_COUNT=${BLOCK_COUNT:-10000}
+              BLOCK_KB=${BLOCK_KB:-256}
+              BASE="${MOUNT}/kvcache"
+              BLOCK_DIR="${BASE}/blocks"
+              META_DIR="${BASE}/meta"
+              mkdir -p "$BLOCK_DIR" "$META_DIR"
+              echo "benchmark=kvcache_prepare"
+              echo "mount=${MOUNT}"
+              echo "block_count=${BLOCK_COUNT}"
+              echo "block_kb=${BLOCK_KB}"
+              echo "block_dir=${BLOCK_DIR}"
+              start=$(date +%s)
+              i=0
+              while [ "$i" -lt "$BLOCK_COUNT" ]; do
+                file=$(printf "%s/block_%08d.bin" "$BLOCK_DIR" "$i")
+                dd if=/dev/urandom of="$file" bs=1K count="$BLOCK_KB" status=none
+                i=$((i+1))
+              done
+              end=$(date +%s)
+              seconds=$((end-start))
+              if [ "$seconds" -eq 0 ]; then
+                seconds=1
+              fi
+              total_mb=$((BLOCK_COUNT * BLOCK_KB / 1024))
+              echo "prepare_seconds=${seconds}"
+              echo "total_mb=${total_mb}"
+              echo "prepare_mb_s=$((total_mb / seconds))"
+              echo "status=complete"
+              find "$BLOCK_DIR" -type f | wc -l > "$META_DIR/block_count.txt"
+              echo "$BLOCK_KB" > "$META_DIR/block_kb.txt"
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

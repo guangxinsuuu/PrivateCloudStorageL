@@ -1,0 +1,66 @@
+global:
+  clusterName: 3fs-demo
+  cloud: aws
+  region: us-east-1
+
+foundationdb:
+  namespace: fdb
+  storageClassName: gp3
+  nodeSelector:
+    role: meta
+
+mgmtd:
+  nodeSelector:
+    role: meta
+  hostNetwork: false
+
+meta:
+  nodeSelector:
+    role: meta
+  hostNetwork: false
+
+storage:
+  nodeSelector:
+    role: storage
+  tolerations:
+    - key: role
+      operator: Equal
+      value: storage
+      effect: NoSchedule
+  hostNetwork: true
+  dataDirs:
+    - /mnt/nvme0
+  volumes:
+    - name: nvme0
+      hostPath:
+        path: /mnt/nvme0
+        type: Directory
+  volumeMounts:
+    - name: nvme0
+      mountPath: /mnt/nvme0
+  resources:
+    requests:
+      vpc.amazonaws.com/efa: "1"
+    limits:
+      vpc.amazonaws.com/efa: "1"
+
+fuse:
+  nodeSelector:
+    role: client
+  hostNetwork: true
+  mountPath: /mnt/3fs
+  resources:
+    requests:
+      vpc.amazonaws.com/efa: "1"
+    limits:
+      vpc.amazonaws.com/efa: "1"
+
+client:
+  nodeSelector:
+    role: client
+  hostNetwork: true
+  resources:
+    requests:
+      vpc.amazonaws.com/efa: "1"
+    limits:
+      vpc.amazonaws.com/efa: "1"

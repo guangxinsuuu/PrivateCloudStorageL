@@ -1,0 +1,82 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvme-mount
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: nvme-mount
+  template:
+    metadata:
+      labels:
+        app: nvme-mount
+    spec:
+      hostPID: true
+      nodeSelector:
+        role: storage
+      tolerations:
+        - key: role
+          operator: Equal
+          value: storage
+          effect: NoSchedule
+      containers:
+        - name: nvme-mount
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              echo "WARNING: This DaemonSet formats non-root NVMe devices."
+              echo "Use only on ephemeral benchmark storage nodes."
+              dnf install -y util-linux xfsprogs nvme-cli || true
+              echo "=== Before mount: lsblk ==="
+              lsblk
+              i=0
+              for dev in /dev/nvme*n1; do
+                [ -b "$dev" ] || continue
+                if lsblk "$dev" | grep -q "/$"; then
+                  echo "Skip root device: $dev"
+                  continue
+                fi
+                mount_point="/mnt/data${i}"
+                mkdir -p "$mount_point"
+                if ! blkid "$dev"; then
+                  echo "Formatting $dev as xfs"
+                  mkfs.xfs -f "$dev"
+                else
+                  echo "$dev already has filesystem"
+                fi
+                if ! mountpoint -q "$mount_point"; then
+                  echo "Mounting $dev to $mount_point"
+                  mount "$dev" "$mount_point"
+                fi
+                chmod 777 "$mount_point"
+                i=$((i+1))
+              done
+              echo "=== After mount: lsblk ==="
+              lsblk
+              echo "=== After mount: df -h ==="
+              df -h | grep -E "(nvme|data)" || true
+              echo "=== sleep for inspection ==="
+              sleep 3600
+          volumeMounts:
+            - name: host-dev
+              mountPath: /dev
+            - name: host-mnt
+              mountPath: /mnt
+            - name: host-run
+              mountPath: /run
+      volumes:
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-mnt
+          hostPath:
+            path: /mnt
+        - name: host-run
+          hostPath:
+            path: /run

@@ -1,0 +1,47 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: threefs-checkpoint-benchmark
+  namespace: threefs
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: checkpoint
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              dnf install -y coreutils time
+              MOUNT=/mnt/3fs
+              WRITERS=${WRITERS:-4}
+              SHARD_MB=${SHARD_MB:-1024}
+              rm -rf "$MOUNT/ckpt_tmp" "$MOUNT/ckpt_v1"
+              mkdir -p "$MOUNT/ckpt_tmp"
+              echo "Writing checkpoint shards..."
+              start=$(date +%s)
+              for i in $(seq 0 $((WRITERS-1))); do
+                dd if=/dev/zero of="$MOUNT/ckpt_tmp/shard_${i}.bin" \
+                  bs=1M count="$SHARD_MB" status=progress &
+              done
+              wait
+              echo "Publishing checkpoint..."
+              mv "$MOUNT/ckpt_tmp" "$MOUNT/ckpt_v1"
+              end=$(date +%s)
+              echo "Checkpoint seconds: $((end-start))"
+              ls -lah "$MOUNT/ckpt_v1"
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

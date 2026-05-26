@@ -1,0 +1,23 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: 3fs-demo
+  region: us-east-1
+  version: "1.30"
+availabilityZones:
+  - us-east-1a
+  - us-east-1b
+vpc:
+  cidr: 10.0.0.0/16
+  nat:
+    gateway: Single
+managedNodeGroups:
+  - name: meta
+    instanceType: c6i.4xlarge
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 2
+    privateNetworking: true
+    volumeSize: 100
+    labels:
+      role: meta

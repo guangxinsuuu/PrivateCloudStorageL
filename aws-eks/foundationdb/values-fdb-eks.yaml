@@ -1,0 +1,11 @@
+foundationdb:
+  clusterName: fdb-3fs
+  namespace: fdb
+  storageClassName: gp3
+  nodeSelector:
+    role: meta
+  volumeSize: 100Gi
+  processCounts:
+    stateless: 2
+    log: 2
+    storage: 2

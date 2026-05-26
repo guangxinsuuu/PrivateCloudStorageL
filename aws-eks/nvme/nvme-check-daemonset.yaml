@@ -1,0 +1,54 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: nvme-check
+  namespace: default
+spec:
+  selector:
+    matchLabels:
+      app: nvme-check
+  template:
+    metadata:
+      labels:
+        app: nvme-check
+    spec:
+      hostPID: true
+      nodeSelector:
+        role: storage
+      tolerations:
+        - key: role
+          operator: Equal
+          value: storage
+          effect: NoSchedule
+      containers:
+        - name: nvme-check
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              echo "=== hostname ==="
+              hostname
+              echo "=== lsblk ==="
+              lsblk
+              echo "=== df -h ==="
+              df -h
+              echo "=== /dev/nvme* ==="
+              ls -lah /dev/nvme* || true
+              echo "=== sleep for inspection ==="
+              sleep 3600
+          volumeMounts:
+            - name: host-dev
+              mountPath: /host-dev
+            - name: host-mnt
+              mountPath: /host-mnt
+      volumes:
+        - name: host-dev
+          hostPath:
+            path: /dev
+        - name: host-mnt
+          hostPath:
+            path: /mnt

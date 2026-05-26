@@ -1,0 +1,34 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+metadata:
+  name: 3fs-demo
+  region: us-east-1
+managedNodeGroups:
+  - name: storage
+    instanceType: i3en.24xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    privateNetworking: true
+    availabilityZones:
+      - us-east-1a
+    efaEnabled: true
+    volumeSize: 100
+    labels:
+      role: storage
+    taints:
+      - key: role
+        value: storage
+        effect: NoSchedule
+  - name: client
+    instanceType: c7gn.16xlarge
+    desiredCapacity: 1
+    minSize: 1
+    maxSize: 1
+    privateNetworking: true
+    availabilityZones:
+      - us-east-1a
+    efaEnabled: true
+    volumeSize: 100
+    labels:
+      role: client

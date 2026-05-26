@@ -1,0 +1,104 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: threefs-usrbio-fio
+  namespace: threefs
+spec:
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: usrbio-fio
+          image: REPLACE_WITH_3FS_CLIENT_OR_BENCHMARK_IMAGE
+          securityContext:
+            privileged: true
+          resources:
+            requests:
+              vpc.amazonaws.com/efa: "1"
+            limits:
+              vpc.amazonaws.com/efa: "1"
+          env:
+            - name: ENGINE
+              value: /opt/3fs/lib/hf3fs_usrbio.so
+            - name: DIR
+              value: /mnt/3fs
+            - name: RUNTIME
+              value: "180"
+            - name: BS
+              value: 1M
+            - name: IODEPTH
+              value: "64"
+            - name: NUMJOBS
+              value: "8"
+            - name: SIZE
+              value: 20G
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              if ! command -v fio >/dev/null 2>&1; then
+                echo "ERROR: fio is missing in this image."
+                exit 1
+              fi
+              cat >/tmp/usrbio-fio-template.sh <<'SCRIPT'
+              #!/usr/bin/env bash
+              set -euo pipefail
+              ENGINE=${ENGINE:-/opt/3fs/lib/hf3fs_usrbio.so}
+              DIR=${DIR:-/mnt/3fs}
+              RUNTIME=${RUNTIME:-180}
+              BS=${BS:-1M}
+              IODEPTH=${IODEPTH:-64}
+              NUMJOBS=${NUMJOBS:-8}
+              SIZE=${SIZE:-20G}
+              if [ ! -f "$ENGINE" ]; then
+                echo "ERROR: USRBIO fio engine not found at $ENGINE"
+                echo "Searching for hf3fs_usrbio.so..."
+                find / -name 'hf3fs_usrbio.so' 2>/dev/null | head -20 || true
+                exit 1
+              fi
+              fio \
+                -ioengine=external:${ENGINE} \
+                -directory="${DIR}" \
+                -name=usrbio-seq-read \
+                -size="${SIZE}" \
+                -rw=read \
+                -bs="${BS}" \
+                -numjobs="${NUMJOBS}" \
+                -iodepth="${IODEPTH}" \
+                -group_reporting \
+                -time_based=1 \
+                -runtime="${RUNTIME}" \
+                -direct=0 \
+                --output-format=json \
+                --output=/tmp/usrbio-seq-read.json
+              fio \
+                -ioengine=external:${ENGINE} \
+                -directory="${DIR}" \
+                -name=usrbio-seq-write \
+                -size="${SIZE}" \
+                -rw=write \
+                -bs="${BS}" \
+                -numjobs="${NUMJOBS}" \
+                -iodepth="${IODEPTH}" \
+                -group_reporting \
+                -time_based=1 \
+                -runtime="${RUNTIME}" \
+                -direct=0 \
+                --output-format=json \
+                --output=/tmp/usrbio-seq-write.json
+              cat /tmp/usrbio-seq-read.json
+              cat /tmp/usrbio-seq-write.json
+              SCRIPT
+              chmod +x /tmp/usrbio-fio-template.sh
+              /tmp/usrbio-fio-template.sh
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate

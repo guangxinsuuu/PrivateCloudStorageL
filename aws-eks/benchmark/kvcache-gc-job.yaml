@@ -1,0 +1,83 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kvcache-gc
+  namespace: threefs
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      nodeSelector:
+        role: client
+      containers:
+        - name: gc
+          image: public.ecr.aws/amazonlinux/amazonlinux:2023
+          securityContext:
+            privileged: true
+          env:
+            - name: MOUNT
+              value: /mnt/3fs
+            - name: DELETE_COUNT
+              value: "2000"
+            - name: MODE
+              value: rename_delete
+          command:
+            - /bin/bash
+            - -lc
+            - |
+              set -euo pipefail
+              MOUNT=${MOUNT:-/mnt/3fs}
+              DELETE_COUNT=${DELETE_COUNT:-2000}
+              MODE=${MODE:-rename_delete}
+              BASE="${MOUNT}/kvcache"
+              BLOCK_DIR="${BASE}/blocks"
+              EXPIRED_DIR="${BASE}/expired"
+              mkdir -p "$EXPIRED_DIR"
+              if [ ! -d "$BLOCK_DIR" ]; then
+                echo "ERROR: block dir missing: $BLOCK_DIR"
+                echo "Run kvcache-prepare-job.yaml first."
+                exit 1
+              fi
+              echo "benchmark=kvcache_gc"
+              echo "mount=${MOUNT}"
+              echo "delete_count=${DELETE_COUNT}"
+              echo "mode=${MODE}"
+              start=$(date +%s)
+              count=0
+              find "$BLOCK_DIR" -type f | head -n "$DELETE_COUNT" | while read -r f; do
+                base=$(basename "$f")
+                if [ "$MODE" = "delete" ]; then
+                  rm -f "$f"
+                elif [ "$MODE" = "rename_delete" ]; then
+                  mv "$f" "$EXPIRED_DIR/$base"
+                  rm -f "$EXPIRED_DIR/$base"
+                else
+                  echo "ERROR: unsupported MODE=$MODE"
+                  exit 1
+                fi
+                count=$((count+1))
+                echo "$count" > "$BASE/gc_count.tmp"
+              done
+              end=$(date +%s)
+              seconds=$((end-start))
+              if [ "$seconds" -eq 0 ]; then
+                seconds=1
+              fi
+              actual_count=0
+              if [ -f "$BASE/gc_count.tmp" ]; then
+                actual_count=$(cat "$BASE/gc_count.tmp")
+              fi
+              iops=$((actual_count / seconds))
+              echo "gc_seconds=${seconds}"
+              echo "gc_ops=${actual_count}"
+              echo "gc_ops_s=${iops}"
+              echo "status=complete"
+          volumeMounts:
+            - name: threefs-mount
+              mountPath: /mnt/3fs
+      volumes:
+        - name: threefs-mount
+          hostPath:
+            path: /mnt/3fs
+            type: DirectoryOrCreate
