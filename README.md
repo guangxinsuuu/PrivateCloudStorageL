@@ -1,5 +1,5 @@
 # FlatWall Private Cloud Storage Layer
-I built the storage layer for FlatWall **Private Cloud**, my private AI/Quant research platform. The core idea is a disaggregated, **3FS**-based architecture on **AWS EKS**, featuring **EFA**-enabled networking, NVMe-backed storage nodes, and **FoundationDB** for metadata. The benchmark suite is designed to compare Local NVMe, raw EFA, FUSE, USRBIO, checkpointing, metadata-heavy workloads, scaling, and KVCache-like read/GC pressure. 
+I built the initial storage layer for FlatWall **Private Cloud**, my private AI/Quant research platform. The core idea is a disaggregated, **3FS**-based architecture on **AWS EKS**, featuring **EFA**-enabled networking, NVMe-backed storage nodes, and **FoundationDB** for metadata. The benchmark suite is designed to compare Local NVMe, raw EFA, FUSE, USRBIO, checkpointing, metadata-heavy workloads, scaling, and KVCache-like read/GC pressure. 
 
 ## 🔴 **Ultimate Performance**
 In the performance profile, USRBIO reaches 18–22 GiB/s large-block read throughput and 14–18 GiB/s write throughput, delivering 2–3× higher throughput and 3–4× lower P99 latency than the FUSE compatibility path. The system also achieves approximately 6–8 seconds for a 128 GiB checkpoint publish, 25k–35k metadata stat operations per second, and 12–16 GiB/s KVCache-like read throughput.
