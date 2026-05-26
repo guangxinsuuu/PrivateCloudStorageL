@@ -50,7 +50,7 @@ FlatWall is not just a chat interface. It is designed as a private-cloud researc
 
 ## 2. AWS Deployment Architecture
 
-The tested architecture is:
+This architecture splits FlatWall's private cloud storage layer into three parts: c6i.4xlarge metadata nodes are responsible for FoundationDB and the 3FS control plane; i3en.24xlarge storage nodes are responsible for the EFA + NVMe-backed 3FS data plane; and c7gn.16xlarge client nodes are responsible for FUSE/USRBIO access and benchmark workloads. Data is transferred between the client and storage via an EFA/RDMA-oriented path:
 
 <img width="530" height="416" alt="Pipeline Architecture" src="./pipeline.png" />
 
